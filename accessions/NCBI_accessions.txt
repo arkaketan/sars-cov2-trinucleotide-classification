@@ -1,0 +1,7 @@
+# NCBI Nucleotide Accession Numbers
+# SARS-CoV-2 Complete Genome Sequences — Five-Class Dataset (n=716)
+# Classes: Alpha, Delta, Omicron, Beta, Mu
+# Retrieved from: https://www.ncbi.nlm.nih.gov/nucleotide/
+#
+# [Accession numbers to be listed here]
+# Full list available on request from the corresponding author: arkaketan1@gmail.com

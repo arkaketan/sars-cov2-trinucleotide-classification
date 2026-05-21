@@ -575,6 +575,7 @@ def main():
 
     if args.train:
         models = train_and_save(verbose=True)
+        generate_manuscript_figures()
     else:
         models = load_models()
 
@@ -588,5 +589,187 @@ def main():
             plot_projection(result, models, save=True)
 
 
-if __name__ == "__main__":
-    main()
+def generate_manuscript_figures():
+    """
+    Generate all corrected manuscript figures for v10:
+      - fig_umap_tsne.png         (Fig 2  — UMAP + t-SNE, corrected title)
+      - fig_cm_5codon_v2.png      (Fig 3b — ET 5-class CM, corrected title)
+      - fig_accuracy_v2.png       (Fig 5  — accuracy bar chart, corrected x-label)
+      - fig_roc_5class_codon_v2.png (ROC curves 5-class)
+      - fig_cpg_oe.png            (CpG O/E ratio analysis)
+      - ledoit_wolf_mu_note.txt   (Ledoit-Wolf Mu covariance summary)
+    """
+    from itertools import product as iproduct
+    from sklearn.manifold import TSNE
+    from sklearn.model_selection import StratifiedKFold, cross_validate
+    from sklearn.metrics import (
+        confusion_matrix, ConfusionMatrixDisplay,
+        roc_curve, auc as sk_auc, roc_auc_score
+    )
+    from sklearn.preprocessing import label_binarize
+    from sklearn.covariance import LedoitWolf
+    from sklearn.naive_bayes import GaussianNB
+    from scipy.stats import f_oneway, ttest_ind, chi2
+    import warnings
+    warnings.filterwarnings("ignore")
+
+    RS = RANDOM_STATE
+    rng = np.random.RandomState(RS)
+
+    print("\n=== Generating manuscript figures ===")
+
+    # ── Load 5-class data ──────────────────────────────────────────────────────
+    codon5 = pd.read_csv(CODON_CSV)
+    tr5    = pd.read_csv(TR_CSV)
+    feat64 = [str(i) for i in range(64)]
+    X5 = codon5[feat64].values.astype(float)
+    y5 = codon5["Encode"].values.astype(int)
+    X5_70 = np.hstack([X5, tr5[TR_COLS].values.astype(float)])
+
+    # ── Load 3-class data ──────────────────────────────────────────────────────
+    codon3_path = DATA_DIR / "Combined_3class_Codon.csv"
+    tr3_path    = DATA_DIR / "Combined_3class_TR.csv"
+    codon3 = pd.read_csv(codon3_path)
+    tr3    = pd.read_csv(tr3_path)
+    tr3_feat_cols = [c for c in tr3.columns if c != "Encode"]
+    LABELS_3 = {1: "Delta", 2: "Mu", 3: "Omicron"}
+    X3 = codon3[feat64].values.astype(float)
+    y3 = codon3["Encode"].values.astype(int)
+    X3_70 = np.hstack([X3, tr3[tr3_feat_cols].values.astype(float)])
+
+    # ── Scale ──────────────────────────────────────────────────────────────────
+    from sklearn.preprocessing import StandardScaler
+    sc5 = StandardScaler().fit(X5);   Xs5 = sc5.transform(X5)
+    sc3 = StandardScaler().fit(X3);   Xs3 = sc3.transform(X3)
+    sc5_70 = StandardScaler().fit(X5_70); Xs5_70 = sc5_70.transform(X5_70)
+    sc3_70 = StandardScaler().fit(X3_70); Xs3_70 = sc3_70.transform(X3_70)
+
+    # ── Train classifiers ──────────────────────────────────────────────────────
+    print("Training classifiers …")
+    from sklearn.model_selection import train_test_split
+    clfs = {
+        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=RS),
+        "Naive Bayes":   GaussianNB(),
+        "Extra Trees":   ExtraTreesClassifier(n_estimators=100, random_state=RS),
+    }
+    Xtr5,Xte5,ytr5,yte5 = train_test_split(Xs5,y5,test_size=.2,stratify=y5,random_state=RS)
+    Xtr3,Xte3,ytr3,yte3 = train_test_split(Xs3,y3,test_size=.2,stratify=y3,random_state=RS)
+    fitted5, fitted3 = {}, {}
+    for name, clf in clfs.items():
+        clf.fit(Xtr5, ytr5); fitted5[name] = clf
+        c = clf.__class__(**clf.get_params()); c.fit(Xtr3, ytr3); fitted3[name] = c
+
+    # ── 10-fold CV ─────────────────────────────────────────────────────────────
+    print("10-fold CV …")
+    cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=RS)
+    scoring = ["accuracy","f1_macro","matthews_corrcoef"]
+    cv_res = {}
+    for lbl, Xcv, ycv in [
+        ("3-class codon", Xs3, y3), ("5-class codon", Xs5, y5),
+        ("3-class TR",    StandardScaler().fit_transform(X3_70[:,64:]), y3),
+        ("5-class TR",    StandardScaler().fit_transform(X5_70[:,64:]), y5),
+        ("3-class 70-D",  Xs3_70, y3), ("5-class 70-D",  Xs5_70, y5),
+    ]:
+        cv_res[lbl] = {}
+        for name, clf in clfs.items():
+            fresh = clf.__class__(**clf.get_params())
+            s = cross_validate(fresh, Xcv, ycv, cv=cv, scoring=scoring)
+            cv_res[lbl][name] = {"acc_mean": s["test_accuracy"].mean(),
+                                 "acc_std":  s["test_accuracy"].std()}
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # FIG 2 — UMAP + t-SNE  (corrected title)
+    # ══════════════════════════════════════════════════════════════════════════
+    print("Generating Fig 2: UMAP + t-SNE …")
+    import umap as umap_lib
+    fig, axes = plt.subplots(2, 2, figsize=(14, 11))
+    fig.suptitle(
+        "Trinucleotide Frequency Feature Space Visualisation\n"
+        "(64-dimensional → 2D projection)",
+        fontsize=14, fontweight="bold"
+    )
+    datasets = [
+        (Xs3, y3, LABELS_3, "3-class (Delta/Mu/Omicron)"),
+        (Xs5, y5, CLASS_LABELS, "5-class (all variants)"),
+    ]
+    for col, (Xd, yd, lmap, title) in enumerate(datasets):
+        tsne = TSNE(n_components=2, perplexity=30, max_iter=1000, random_state=RS).fit_transform(Xd)
+        ax = axes[0][col]
+        for cls in sorted(np.unique(yd)):
+            mask = yd == cls; nm = lmap[cls]
+            ax.scatter(tsne[mask,0], tsne[mask,1], c=CLASS_COLORS[nm], label=nm, s=12, alpha=0.7, linewidths=0)
+        ax.set_title(f"t-SNE — {title}", fontsize=11)
+        ax.set_xlabel("t-SNE 1"); ax.set_ylabel("t-SNE 2"); ax.legend(fontsize=8, markerscale=2)
+
+        um = umap_lib.UMAP(n_components=2, n_neighbors=20, min_dist=0.1, random_state=RS).fit_transform(Xd)
+        ax = axes[1][col]
+        for cls in sorted(np.unique(yd)):
+            mask = yd == cls; nm = lmap[cls]
+            ax.scatter(um[mask,0], um[mask,1], c=CLASS_COLORS[nm], label=nm, s=12, alpha=0.7, linewidths=0)
+        ax.set_title(f"UMAP — {title}", fontsize=11)
+        ax.set_xlabel("UMAP 1"); ax.set_ylabel("UMAP 2"); ax.legend(fontsize=8, markerscale=2)
+
+    plt.tight_layout()
+    out = FIG_DIR / "fig_umap_tsne.png"
+    plt.savefig(out, dpi=150, bbox_inches="tight"); plt.close()
+    print(f"  Saved: {out}")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # FIG 3b — ET 5-class CM  (corrected title)
+    # ══════════════════════════════════════════════════════════════════════════
+    print("Generating Fig 3b: ET 5-class CM …")
+    et5 = fitted5["Extra Trees"]
+    ypred5 = et5.predict(Xte5)
+    cm5 = confusion_matrix(yte5, ypred5, labels=sorted(np.unique(y5)))
+    names5 = [CLASS_LABELS[k] for k in sorted(np.unique(y5))]
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ConfusionMatrixDisplay(confusion_matrix=cm5, display_labels=names5).plot(ax=ax, colorbar=False, cmap="Blues")
+    ax.set_title("ET — 5-class Trinucleotide Freq.", fontsize=12, fontweight="bold")
+    plt.tight_layout()
+    out = FIG_DIR / "fig_cm_5codon_v2.png"
+    plt.savefig(out, dpi=150, bbox_inches="tight"); plt.close()
+    print(f"  Saved: {out}")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # FIG 5 — Accuracy bar chart  (corrected x-label)
+    # ══════════════════════════════════════════════════════════════════════════
+    print("Generating Fig 5: accuracy bar chart …")
+    clf_names  = ["Random Forest", "Naive Bayes", "Extra Trees"]
+    clf_colors = ["#5b9bd5", "#ed7d31", "#70ad47"]
+    group_labels = ["Trinucleotide\nFreq.", "Tandem\nRepeat", "Combined\n70-D"]
+    fig, axes2 = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle("Classification Accuracy (10-fold CV mean ± SD)", fontsize=13, fontweight="bold")
+    for ax_idx, (ax, descs, ttl) in enumerate(zip(
+        axes2,
+        [["3-class codon","3-class TR","3-class 70-D"],
+         ["5-class codon","5-class TR","5-class 70-D"]],
+        ["3-Class Accuracy", "5-Class Accuracy"]
+    )):
+        ax.set_title(ttl, fontsize=11)
+        x = np.arange(3); bar_w = 0.22
+        for ci, (cn, col) in enumerate(zip(clf_names, clf_colors)):
+            means = [cv_res[d][cn]["acc_mean"] for d in descs]
+            stds  = [cv_res[d][cn]["acc_std"]  for d in descs]
+            off = (ci - 1) * bar_w
+            ax.bar(x + off, means, bar_w, label=cn, color=col, alpha=0.85, zorder=3)
+            ax.errorbar(x + off, means, yerr=stds, fmt="none", color="black", capsize=4, lw=1.2, zorder=4)
+        chance = 1/3 if ax_idx == 0 else 1/5
+        ax.axhline(chance, color="gray", linestyle="--", lw=1, alpha=0.6, label=f"Chance ({chance:.2f})")
+        ax.set_xticks(x); ax.set_xticklabels(group_labels, fontsize=10)
+        ax.set_ylabel("Accuracy"); ax.set_ylim(0, 1.08)
+        ax.yaxis.grid(True, alpha=0.4, zorder=0); ax.set_axisbelow(True); ax.legend(fontsize=9)
+    plt.tight_layout()
+    out = FIG_DIR / "fig_accuracy_v2.png"
+    plt.savefig(out, dpi=150, bbox_inches="tight"); plt.close()
+    print(f"  Saved: {out}")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ROC CURVES — 5-class
+    # ══════════════════════════════════════════════════════════════════════════
+    print("Generating 5-class ROC curves …")
+    classes5 = sorted(np.unique(y5))
+    Y5_bin = label_binarize(yte5, classes=classes5)
+    fig, axes3 = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle("ROC Curves — 5-class Trinucleotide Frequency", fontsize=13, fontweight="bold")
+    clf_plot_colors = {"Random Forest":"#5b9bd5","Naive Bayes":"#ed7d31","Extra Trees":"#70ad47"}
+    mean_fpr = np.linspac

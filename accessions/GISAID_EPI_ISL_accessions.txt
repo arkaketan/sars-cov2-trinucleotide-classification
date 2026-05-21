@@ -1,0 +1,11 @@
+# GISAID EPI_ISL Accession Numbers
+# SARS-CoV-2 Complete Genome Sequences — Three-Class Dataset augmentation (n=150)
+# Classes: Delta (+50), Mu (+50), Omicron (+50)
+# Source: GISAID EpiCoV Database (https://www.gisaid.org)
+#
+# These sequences were accessed under the GISAID Data Access Agreement.
+# Raw sequence data cannot be redistributed; accession numbers are provided
+# for reproducibility. Registered GISAID users may retrieve sequences directly.
+#
+# [EPI_ISL accession numbers to be listed here]
+# Full list available on request from the corresponding author: arkaketan1@gmail.com

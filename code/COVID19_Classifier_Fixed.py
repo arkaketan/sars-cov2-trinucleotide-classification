@@ -27,7 +27,11 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-DATASET_PATH = "Master_Dataset.csv"   # set to your path if running elsewhere
+from pathlib import Path
+_HERE        = Path(__file__).parent
+DATASET_PATH = str(_HERE.parent / "datasets" / "Combined_3class_Codon.csv")
+FIG_DIR      = _HERE.parent / "figures"
+FIG_DIR.mkdir(exist_ok=True)
 RANDOM_STATE = 42
 TEST_SIZE    = 0.20
 N_FOLDS      = 10
@@ -119,11 +123,12 @@ ConfusionMatrixDisplay(
     confusion_matrix=split_results["Extra Trees"]["cm"],
     display_labels=["Delta", "Mu", "Omicron"]
 ).plot(ax=ax, colorbar=False, cmap="Blues")
-ax.set_title("Extra Trees Classifier — Confusion Matrix (80/20 split)")
+ax.set_title("ET — 3-class Trinucleotide Freq.\n(Confusion Matrix, 80/20 split)")
 plt.tight_layout()
-plt.savefig("confusion_matrix_extra_trees.png", dpi=150)
+_cm_out = FIG_DIR / "fig_cm_3codon_v2.png"
+plt.savefig(_cm_out, dpi=150, bbox_inches="tight")
 plt.close()
-print("\nSaved: confusion_matrix_extra_trees.png")
+print(f"\nSaved: {_cm_out}")
 
 # ── ROC Curve Plot (One-vs-Rest, all three classifiers) ───────────────────────
 fig, ax = plt.subplots(figsize=(8, 6))
@@ -143,13 +148,14 @@ for name, clf in fitted_clfs.items():
             plot_chance_level=(name == "Naive Bayes"),
         )
 
-ax.set_title("ROC Curves — One-vs-Rest (Delta class shown, macro AUC in legend)")
+ax.set_title("ROC Curves — 3-class Trinucleotide Frequency\n(One-vs-Rest, macro AUC in legend)")
 ax.set_xlabel("False Positive Rate")
 ax.set_ylabel("True Positive Rate")
 plt.tight_layout()
-plt.savefig("roc_curves.png", dpi=150)
+_roc_out = FIG_DIR / "fig_roc_3class_codon_v2.png"
+plt.savefig(_roc_out, dpi=150, bbox_inches="tight")
 plt.close()
-print("Saved: roc_curves.png")
+print(f"Saved: {_roc_out}")
 
 # ── Summary Table ──────────────────────────────────────────────────────────────
 print("\n" + "=" * 65)
