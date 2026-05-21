@@ -218,18 +218,15 @@ If you use this code or data, please cite:
   author  = {Banerjee, Arka Ketan and Sarkar, Anasua},
   journal = {[Journal name — to be updated upon acceptance]},
   year    = {2025},
-  doi     = {[DOI — to be updated upon acceptance]}
+  doi     = {10.5281/zenodo.20319358}
 }
 ```
+
+The archived code release is also available on Zenodo:
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20319358.svg)](https://doi.org/10.5281/zenodo.20319358)
 
 ---
 
 ## Licence
 
-This project is released under the **MIT Licence** — see [LICENSE](LICENSE) for details.
-
----
-
-## Contact
-
-Corresponding author: **Arka Ketan Banerjee** — arkaketan1@gmail.com
+This project is released under t
