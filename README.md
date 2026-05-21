@@ -30,9 +30,6 @@ sars-cov2-trinucleotide-classification/
 ├── requirements.txt
 ├── environment.yml
 │
-├── manuscript/
-│   └── COVID19_Full_Analysis_v8.docx      # Full manuscript (submission version)
-│
 ├── code/
 │   ├── COVID19_Classifier_Fixed.py         # Main classification pipeline
 │   └── variant_proximity_predictor.py      # Proximity-based surveillance framework
