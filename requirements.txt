@@ -1,0 +1,23 @@
+# Core scientific stack
+numpy>=1.23
+pandas>=1.5
+scipy>=1.9
+
+# Machine learning
+scikit-learn>=1.2
+
+# Dimensionality reduction
+umap-learn>=0.5.3
+
+# Interpretability
+shap>=0.41
+
+# Plotting
+matplotlib>=3.6
+seaborn>=0.12
+
+# Bioinformatics (sequence feature extraction)
+biopython>=1.80
+
+# Model serialisation
+joblib>=1.2
